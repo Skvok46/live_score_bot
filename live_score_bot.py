@@ -8,9 +8,10 @@ from telegram.ext import Updater, CommandHandler, CallbackQueryHandler, Callback
 # ======================
 # 🔑 НАСТРОЙКИ (ОБЯЗАТЕЛЬНО ЗАМЕНИ!)
 # ======================
-TELEGRAM_TOKEN = "ВСТАВЬ_TELEGRAM_ТОКЕН_ЗДЕСЬ"  # ← Пример: "123456789:AAFdGhIjKlMnOpQrStUvWxYz123456789"
-RAPID_API_KEY = "ВСТАВЬ_RAPIDAPI_КЛЮЧ_ЗДЕСЬ"    # ← Пример: "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"
-YOUR_TELEGRAM_ID = 123456789                    # ← Твой Telegram ID (число!)
+# Эти значения будут перезаписаны из переменных окружения на Railway
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+RAPID_API_KEY = os.getenv("RAPID_API_KEY")
+YOUR_TELEGRAM_ID = int(os.getenv("YOUR_TELEGRAM_ID")) if os.getenv("YOUR_TELEGRAM_ID") else 0
 
 # ⏱️ Настройки
 LIVE_CHECK_INTERVAL = 864  # секунд (рекомендуется 864 = 14.4 мин для бесплатного тарифа)
@@ -418,6 +419,9 @@ def button_handler(update: Update, context: CallbackContext):
 # ======================
 
 def main():
+    global api_request_count
+    api_request_count = 0  # ✅ Сброс счётчика при каждом запуске main()
+    
     logging.basicConfig(
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         level=logging.INFO
@@ -438,6 +442,15 @@ def main():
 # ======================
 
 if __name__ == "__main__":
+    # Проверка обязательных переменных
+    if not TELEGRAM_TOKEN or not RAPID_API_KEY or not YOUR_TELEGRAM_ID:
+        print("❌ ОШИБКА: Не заданы переменные окружения!")
+        print("   Убедитесь, что в Railway заданы:")
+        print("   - TELEGRAM_TOKEN")
+        print("   - RAPID_API_KEY")
+        print("   - YOUR_TELEGRAM_ID")
+        exit(1)
+    
     daily_requests = 86400 // LIVE_CHECK_INTERVAL
     print(f"\n❗ Лимит: {DAILY_LIMIT} запросов/день.")
     print(f"   Интервал: {LIVE_CHECK_INTERVAL} сек → ~{daily_requests} запросов/день на матч.")
@@ -459,8 +472,7 @@ if __name__ == "__main__":
             logging.error(f"❌ Критическая ошибка: {e}")
             print(f"⚠️  Произошла ошибка. Перезапуск через 10 секунд... (попытка {restart_count}/{max_restarts})")
             time.sleep(10)
-            global api_request_count
-            api_request_count = 0
+            # ❌ НЕ сбрасываем api_request_count здесь — он сбрасывается в main()
     
     if restart_count >= max_restarts:
         print(f"💥 Достигнут лимит перезапусков ({max_restarts}). Бот остановлен.")
