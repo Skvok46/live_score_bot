@@ -390,7 +390,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == 'live':
         await show_live_matches(update, context)
     elif data.startswith('monitor_'):
-        match_id = data.split('_')[1]        await start_monitoring(update, context, match_id)
+        match_id = data.split('_')[1]        
+        await start_monitoring(update, context, match_id)
     elif data == 'stop_monitoring':
         await stop_monitoring_manual(update, context)
     elif data == 'back':
