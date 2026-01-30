@@ -1,5 +1,4 @@
 import aiohttp
-import asyncio
 import time
 import logging
 import os
@@ -87,7 +86,7 @@ async def get_today_matches():
     for league_id in user_data["selected_football"]:
         params = {"date": today, "league": league_id, "timezone": "Europe/Moscow"}
         data = await make_api_request(url, headers, params)
-        if data and "response" in data:
+        if data and "response" in 
             for m in data["response"]:
                 matches.append({
                     "id": m["fixture"]["id"],
@@ -96,11 +95,11 @@ async def get_today_matches():
                     "away": m["teams"]["away"]["name"],
                     "time": m["fixture"]["date"][11:16],
                     "sport": "football"
-                })    
-    for league_id in user_data["selected_hockey"]:
+                })
+        for league_id in user_data["selected_hockey"]:
         params = {"date": today, "league": league_id, "timezone": "Europe/Moscow"}
         data = await make_api_request(url, headers, params)
-        if data and "response" in data:
+        if data and "response" in 
             for m in data["response"]:
                 matches.append({
                     "id": m["fixture"]["id"],
@@ -121,7 +120,7 @@ async def get_live_matches():
     for league_id in user_data["selected_football"]:
         params = {"live": "all", "league": league_id}
         data = await make_api_request(url, headers, params)
-        if data and "response" in data:
+        if data and "response" in 
             for m in data["response"]:
                 matches.append({
                     "id": m["fixture"]["id"],
@@ -137,7 +136,7 @@ async def get_live_matches():
     for league_id in user_data["selected_hockey"]:
         params = {"live": "all", "league": league_id}
         data = await make_api_request(url, headers, params)
-        if data and "response" in data:
+        if data and "response" in 
             for m in data["response"]:
                 matches.append({
                     "id": m["fixture"]["id"],
@@ -145,8 +144,8 @@ async def get_live_matches():
                     "home": m["teams"]["home"]["name"],
                     "away": m["teams"]["away"]["name"],
                     "home_goals": m["goals"]["home"] or 0,
-                    "away_goals": m["goals"]["away"] or 0,                    "period": m["fixture"]["status"]["short"] or "?",
-                    "sport": "hockey"
+                    "away_goals": m["goals"]["away"] or 0,
+                    "period": m["fixture"]["status"]["short"] or "?",                    "sport": "hockey"
                 })
     
     return matches
@@ -194,8 +193,8 @@ async def configure_leagues(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     keyboard = [
-        [InlineKeyboardButton("⚽ Футбол", callback_data='choose_football')],        [InlineKeyboardButton("🏒 Хоккей", callback_data='choose_hockey')],
-        [InlineKeyboardButton("⬅️ Назад", callback_data='back')]
+        [InlineKeyboardButton("⚽ Футбол", callback_data='choose_football')],
+        [InlineKeyboardButton("🏒 Хоккей", callback_data='choose_hockey')],        [InlineKeyboardButton("⬅️ Назад", callback_data='back')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text("Выберите вид спорта:", reply_markup=reply_markup)
@@ -243,8 +242,8 @@ async def show_today_matches(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     message = "📅 <b>Матчи на сегодня:</b>\n\n"
     for i, m in enumerate(matches[:MATCHES_PER_PAGE], 1):
-        message += f"{i}. {m['league']}\n⏰ {m['time']} • {m['home']} vs {m['away']}\n\n"    
-    keyboard = [[InlineKeyboardButton("⬅️ Назад", callback_data='back')]]
+        message += f"{i}. {m['league']}\n⏰ {m['time']} • {m['home']} vs {m['away']}\n\n"
+        keyboard = [[InlineKeyboardButton("⬅️ Назад", callback_data='back')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(message, reply_markup=reply_markup, parse_mode='HTML')
 
@@ -292,8 +291,8 @@ async def start_monitoring(update: Update, context: ContextTypes.DEFAULT_TYPE, m
 
 async def stop_monitoring_manual(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    match_id = user_data["monitoring_match_id"]    
-    if not match_id:
+    match_id = user_data["monitoring_match_id"]
+        if not match_id:
         msg = "❌ Нет активного отслеживания."
         if update.callback_query:
             await update.callback_query.edit_message_text(msg)
@@ -341,8 +340,8 @@ async def check_goals(context: ContextTypes.DEFAULT_TYPE):
     
     match = await get_match_details(match_id)
     if not match:
-        return    
-    status = match["status"].upper()
+        return
+        status = match["status"].upper()
     finished_statuses = ["FT", "AET", "PEN", "FINISHED", "ENDED", "SUSPENDED", "CANC", "ABD", "POSTP"]
     
     if any(finished in status for finished in finished_statuses):
@@ -372,7 +371,7 @@ async def check_goals(context: ContextTypes.DEFAULT_TYPE):
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data = query.data
-
+    
     if data == 'configure_leagues':
         await configure_leagues(update, context)
     elif data == 'choose_football':
@@ -390,10 +389,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == 'live':
         await show_live_matches(update, context)
     elif data.startswith('monitor_'):
-        # ✅ Ключевая часть — разбито на 2 строки
         match_id = data.split('_')[1]
-        await start_monitoring(update, context, match_id)
-    elif data == 'stop_monitoring':
+        await start_monitoring(update, context, match_id)    elif data == 'stop_monitoring':
         await stop_monitoring_manual(update, context)
     elif data == 'back':
         await start(update, context)
@@ -403,8 +400,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ======================
 
 def main():
-    global api_request_count
+    global api_request_count, user_data
     api_request_count = 0
+    # КРИТИЧЕСКИ ВАЖНО: сбросить состояние при каждом запуске
+    user_data["monitoring_match_id"] = None
+    user_data["last_score"] = {}
     
     logging.basicConfig(
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -417,7 +417,6 @@ def main():
     application.add_handler(CommandHandler("stop", stop_monitoring_manual))
     application.add_handler(CallbackQueryHandler(button_handler))
     
-    # Единственный запуск — без asyncio, без циклов
     application.run_polling()
 
 # ======================
@@ -440,4 +439,4 @@ if __name__ == "__main__":
         print("   ⚠️ Рекомендуется увеличить интервал!")
 
     print("\n🚀 Запуск бота...")
-    main()  # ← Простой вызов, без asyncio.run(), без await
+    main()
