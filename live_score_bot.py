@@ -15,7 +15,7 @@ from telegram.ext import (
 # ======================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 RAPID_API_KEY = os.getenv("RAPID_API_KEY")
-YOUR_TELEGRAM_ID = int(os.getenv("YOUR_TELEGRAM_ID", "0"))
+YOUR_TELEGRAM_ID = int(os.getenv("YOUR_TELEGRAM_ID"))
 
 LIVE_CHECK_INTERVAL = 864
 MATCHES_PER_PAGE = 5
