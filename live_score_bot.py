@@ -372,7 +372,7 @@ async def check_goals(context: ContextTypes.DEFAULT_TYPE):
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     data = query.data
-    
+
     if data == 'configure_leagues':
         await configure_leagues(update, context)
     elif data == 'choose_football':
@@ -389,8 +389,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await show_today_matches(update, context)
     elif data == 'live':
         await show_live_matches(update, context)
-    elif data.startswith('monitor_'): 
-        match_id = data.split('_')[1]        
+    elif data.startswith('monitor_'):
+        # ✅ Ключевая часть — разбито на 2 строки
+        match_id = data.split('_')[1]
         await start_monitoring(update, context, match_id)
     elif data == 'stop_monitoring':
         await stop_monitoring_manual(update, context)
