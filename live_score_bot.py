@@ -1,4 +1,5 @@
-import requests
+import aiohttp
+import asyncio
 import time
 import logging
 import os
@@ -45,10 +46,9 @@ user_data = {
 }
 
 # ======================
-# 🌐 УНИВЕРСАЛЬНЫЙ ЗАПРОС К API
+# 🌐 АСИНХРОННЫЙ ЗАПРОС К API
 # ======================
-
-def make_api_request(url, headers, params=None):
+async def make_api_request(url, headers, params=None):
     global api_request_count
     try:
         api_request_count += 1
@@ -59,21 +59,26 @@ def make_api_request(url, headers, params=None):
             try:
                 from telegram import Bot
                 bot = Bot(token=TELEGRAM_TOKEN)
-                bot.send_message(chat_id=YOUR_TELEGRAM_ID, text=warning_msg)
+                await bot.send_message(chat_id=YOUR_TELEGRAM_ID, text=warning_msg)
             except Exception as e:
                 logging.error(f"Не удалось отправить предупреждение: {e}")
         
-        response = requests.get(url, headers=headers, params=params, timeout=10)
-        return response
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers, params=params, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                if response.status == 200:
+                    return await response.json()
+                else:
+                    logging.error(f"API вернул статус: {response.status}")
+                    return None
     except Exception as e:
         logging.error(f"Ошибка запроса: {e}")
         return None
 
 # ======================
-# 📅 ФУНКЦИИ ПОЛУЧЕНИЯ ДАННЫХ
+# 📅 АСИНХРОННЫЕ ФУНКЦИИ ПОЛУЧЕНИЯ ДАННЫХ
 # ======================
 
-def get_today_matches():
+async def get_today_matches():
     matches = []
     today = time.strftime("%Y-%m-%d")
     url = "https://api-sports-v1.p.rapidapi.com/v3/fixtures"
@@ -81,10 +86,9 @@ def get_today_matches():
     
     for league_id in user_data["selected_football"]:
         params = {"date": today, "league": league_id, "timezone": "Europe/Moscow"}
-        response = make_api_request(url, headers, params)
-        if response and response.status_code == 200:
-            data = response.json()
-            for m in data.get("response", []):
+        data = await make_api_request(url, headers, params)
+        if data and "response" in data:
+            for m in data["response"]:
                 matches.append({
                     "id": m["fixture"]["id"],
                     "league": m["league"]["name"],
@@ -92,14 +96,12 @@ def get_today_matches():
                     "away": m["teams"]["away"]["name"],
                     "time": m["fixture"]["date"][11:16],
                     "sport": "football"
-                })
-    
+                })    
     for league_id in user_data["selected_hockey"]:
         params = {"date": today, "league": league_id, "timezone": "Europe/Moscow"}
-        response = make_api_request(url, headers, params)
-        if response and response.status_code == 200:
-            data = response.json()
-            for m in data.get("response", []):
+        data = await make_api_request(url, headers, params)
+        if data and "response" in data:
+            for m in data["response"]:
                 matches.append({
                     "id": m["fixture"]["id"],
                     "league": m["league"]["name"],
@@ -111,17 +113,16 @@ def get_today_matches():
     
     return matches
 
-def get_live_matches():
+async def get_live_matches():
     matches = []
     url = "https://api-sports-v1.p.rapidapi.com/v3/fixtures"
     headers = {"X-RapidAPI-Key": RAPID_API_KEY, "X-RapidAPI-Host": "api-sports-v1.p.rapidapi.com"}
     
     for league_id in user_data["selected_football"]:
         params = {"live": "all", "league": league_id}
-        response = make_api_request(url, headers, params)
-        if response and response.status_code == 200:
-            data = response.json()
-            for m in data.get("response", []):
+        data = await make_api_request(url, headers, params)
+        if data and "response" in data:
+            for m in data["response"]:
                 matches.append({
                     "id": m["fixture"]["id"],
                     "league": m["league"]["name"],
@@ -135,44 +136,40 @@ def get_live_matches():
     
     for league_id in user_data["selected_hockey"]:
         params = {"live": "all", "league": league_id}
-        response = make_api_request(url, headers, params)
-        if response and response.status_code == 200:
-            data = response.json()
-            for m in data.get("response", []):
+        data = await make_api_request(url, headers, params)
+        if data and "response" in data:
+            for m in data["response"]:
                 matches.append({
                     "id": m["fixture"]["id"],
                     "league": m["league"]["name"],
                     "home": m["teams"]["home"]["name"],
                     "away": m["teams"]["away"]["name"],
                     "home_goals": m["goals"]["home"] or 0,
-                    "away_goals": m["goals"]["away"] or 0,
-                    "period": m["fixture"]["status"]["short"] or "?",
+                    "away_goals": m["goals"]["away"] or 0,                    "period": m["fixture"]["status"]["short"] or "?",
                     "sport": "hockey"
                 })
     
     return matches
 
-def get_match_details(match_id):
+async def get_match_details(match_id):
     url = f"https://api-sports-v1.p.rapidapi.com/v3/fixtures?id={match_id}"
     headers = {"X-RapidAPI-Key": RAPID_API_KEY, "X-RapidAPI-Host": "api-sports-v1.p.rapidapi.com"}
-    response = make_api_request(url, headers)
+    data = await make_api_request(url, headers)
     
-    if response and response.status_code == 200:
-        data = response.json()
-        if data["response"]:
-            m = data["response"][0]
-            return {
-                "home": m["teams"]["home"]["name"],
-                "away": m["teams"]["away"]["name"],
-                "home_goals": m["goals"]["home"] or 0,
-                "away_goals": m["goals"]["away"] or 0,
-                "status": m["fixture"]["status"]["short"],
-                "league": m["league"]["name"]
-            }
+    if data and data.get("response"):
+        m = data["response"][0]
+        return {
+            "home": m["teams"]["home"]["name"],
+            "away": m["teams"]["away"]["name"],
+            "home_goals": m["goals"]["home"] or 0,
+            "away_goals": m["goals"]["away"] or 0,
+            "status": m["fixture"]["status"]["short"],
+            "league": m["league"]["name"]
+        }
     return None
 
 # ======================
-# 🤖 TELEGRAM-БОТ (v20.7)
+# 🤖 TELEGRAM-БОТ (v21.5)
 # ======================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -197,8 +194,7 @@ async def configure_leagues(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     keyboard = [
-        [InlineKeyboardButton("⚽ Футбол", callback_data='choose_football')],
-        [InlineKeyboardButton("🏒 Хоккей", callback_data='choose_hockey')],
+        [InlineKeyboardButton("⚽ Футбол", callback_data='choose_football')],        [InlineKeyboardButton("🏒 Хоккей", callback_data='choose_hockey')],
         [InlineKeyboardButton("⬅️ Назад", callback_data='back')]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -239,7 +235,7 @@ async def toggle_league(update: Update, context: ContextTypes.DEFAULT_TYPE, spor
 
 async def show_today_matches(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    matches = get_today_matches()
+    matches = await get_today_matches()
     
     if not matches:
         await query.edit_message_text("Сегодня нет матчей в выбранных лигах.")
@@ -247,15 +243,14 @@ async def show_today_matches(update: Update, context: ContextTypes.DEFAULT_TYPE)
     
     message = "📅 <b>Матчи на сегодня:</b>\n\n"
     for i, m in enumerate(matches[:MATCHES_PER_PAGE], 1):
-        message += f"{i}. {m['league']}\n⏰ {m['time']} • {m['home']} vs {m['away']}\n\n"
-    
+        message += f"{i}. {m['league']}\n⏰ {m['time']} • {m['home']} vs {m['away']}\n\n"    
     keyboard = [[InlineKeyboardButton("⬅️ Назад", callback_data='back')]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(message, reply_markup=reply_markup, parse_mode='HTML')
 
 async def show_live_matches(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    matches = get_live_matches()
+    matches = await get_live_matches()
     
     if not matches:
         await query.edit_message_text("Нет активных матчей в выбранных лигах.")
@@ -281,7 +276,6 @@ async def start_monitoring(update: Update, context: ContextTypes.DEFAULT_TYPE, m
     user_data["monitoring_match_id"] = int(match_id)
     user_data["last_score"] = {"home": 0, "away": 0}
     
-    # Запускаем фоновую задачу
     context.application.job_queue.run_repeating(
         check_goals,
         interval=LIVE_CHECK_INTERVAL,
@@ -298,8 +292,7 @@ async def start_monitoring(update: Update, context: ContextTypes.DEFAULT_TYPE, m
 
 async def stop_monitoring_manual(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
-    match_id = user_data["monitoring_match_id"]
-    
+    match_id = user_data["monitoring_match_id"]    
     if not match_id:
         msg = "❌ Нет активного отслеживания."
         if update.callback_query:
@@ -346,10 +339,9 @@ async def check_goals(context: ContextTypes.DEFAULT_TYPE):
     if not match_id:
         return
     
-    match = get_match_details(match_id)
+    match = await get_match_details(match_id)
     if not match:
-        return
-    
+        return    
     status = match["status"].upper()
     finished_statuses = ["FT", "AET", "PEN", "FINISHED", "ENDED", "SUSPENDED", "CANC", "ABD", "POSTP"]
     
@@ -398,8 +390,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == 'live':
         await show_live_matches(update, context)
     elif data.startswith('monitor_'):
-        match_id = data.split('_')[1]
-        await start_monitoring(update, context, match_id)
+        match_id = data.split('_')[1]        await start_monitoring(update, context, match_id)
     elif data == 'stop_monitoring':
         await stop_monitoring_manual(update, context)
     elif data == 'back':
@@ -427,7 +418,7 @@ def main():
     application.run_polling()
 
 # ======================
-# 🔁 АВТОПЕРЕЗАПУСК ПРИ ОШИБКАХ
+# 🏁 ТОЧКА ВХОДА
 # ======================
 
 if __name__ == "__main__":
@@ -445,21 +436,5 @@ if __name__ == "__main__":
     if daily_requests > 90:
         print("   ⚠️ Рекомендуется увеличить интервал!")
 
-    restart_count = 0
-    max_restarts = 10
-
-    while restart_count < max_restarts:
-        try:
-            print(f"\n🚀 Запуск бота (попытка #{restart_count + 1})...")
-            main()
-        except KeyboardInterrupt:
-            print("\n🛑 Бот остановлен вручную.")
-            break
-        except Exception as e:
-            restart_count += 1
-            logging.error(f"❌ Критическая ошибка: {e}")
-            print(f"⚠️  Произошла ошибка. Перезапуск через 10 секунд... (попытка {restart_count}/{max_restarts})")
-            time.sleep(10)
-    
-    if restart_count >= max_restarts:
-        print(f"💥 Достигнут лимит перезапусков ({max_restarts}). Бот остановлен.")
+    print("\n🚀 Запуск бота...")
+    main()
