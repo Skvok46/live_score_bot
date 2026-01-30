@@ -417,6 +417,7 @@ def main():
     application.add_handler(CommandHandler("stop", stop_monitoring_manual))
     application.add_handler(CallbackQueryHandler(button_handler))
     
+    # Единственный запуск — без asyncio, без циклов
     application.run_polling()
 
 # ======================
@@ -439,4 +440,4 @@ if __name__ == "__main__":
         print("   ⚠️ Рекомендуется увеличить интервал!")
 
     print("\n🚀 Запуск бота...")
-    main()
+    main()  # ← Простой вызов, без asyncio.run(), без await
