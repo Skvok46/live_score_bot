@@ -3,105 +3,99 @@ import time
 import logging
 import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    Application,
-    CommandHandler,
-    CallbackQueryHandler,
-    ContextTypes,
-)
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
 # ======================
 # 🔑 НАСТРОЙКИ
 # ======================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-RAPID_API_KEY = os.getenv("RAPID_API_KEY")
-YOUR_TELEGRAM_ID = int(os.getenv("YOUR_TELEGRAM_ID"))
+API_SPORTS_KEY = os.getenv("RAPID_API_KEY")   # используем тот же env
+YOUR_TELEGRAM_ID = int(os.getenv("YOUR_TELEGRAM_ID")) if os.getenv("YOUR_TELEGRAM_ID") else 0
 
 LIVE_CHECK_INTERVAL = 864
 MATCHES_PER_PAGE = 5
 DAILY_LIMIT = 100
 
 api_request_count = 0
-aiohttp_session: aiohttp.ClientSession | None = None
 
-# ======================
-# 🏆 ЛИГИ
-# ======================
 ALL_FOOTBALL_LEAGUES = [
     {"id": 39, "name": "АПЛ (Англия)"},
     {"id": 140, "name": "Ла Лига (Испания)"},
     {"id": 135, "name": "Серия А (Италия)"},
     {"id": 78, "name": "Бундеслига (Германия)"},
     {"id": 61, "name": "Лига 1 (Франция)"},
+    {"id": 2, "name": "Лига Чемпионов"},
 ]
 
 ALL_HOCKEY_LEAGUES = [
     {"id": 57, "name": "NHL (США/Канада)"},
     {"id": 105, "name": "КХЛ (Россия)"},
-    {"id": 106, "name": "ВХЛ (Россия)"},
-    {"id": 110, "name": "SHL (Швеция)"},
-    {"id": 111, "name": "Liiga (Финляндия)"},
 ]
 
-# ======================
-# 🧠 СОСТОЯНИЕ (один пользователь)
-# ======================
 user_data = {
     "selected_football": [39],
     "selected_hockey": [57],
     "monitoring_match_id": None,
-    "last_score": {},
+    "last_score": {}
 }
 
 # ======================
-# 🌐 API
+# 🌐 ПРЯМОЙ API SPORTS IO
 # ======================
-async def make_api_request(url, headers, params=None):
-    global api_request_count
 
-    if api_request_count >= DAILY_LIMIT:
-        logging.error("❌ API лимит исчерпан")
-        return None
+BASE_URL = "https://v3.football.api-sports.io"
 
-    api_request_count += 1
-    logging.info(f"📡 API запрос {api_request_count}/{DAILY_LIMIT}")
-
-    try:
-        async with aiohttp_session.get(
-            url,
-            headers=headers,
-            params=params,
-            timeout=aiohttp.ClientTimeout(total=10),
-        ) as response:
-            if response.status == 200:
-                return await response.json()
-            logging.error(f"API статус {response.status}")
-            return None
-    except Exception as e:
-        logging.error(f"Ошибка API: {e}")
-        return None
-
-# ======================
-# 📊 ДАННЫЕ
-# ======================
-async def get_today_matches():
-    today = time.strftime("%Y-%m-%d")
-    url = "https://api-sports-v1.p.rapidapi.com/v3/fixtures"
-    headers = {
-        "X-RapidAPI-Key": RAPID_API_KEY,
-        "X-RapidAPI-Host": "api-sports-v1.p.rapidapi.com",
+def get_headers():
+    return {
+        "x-apisports-key": API_SPORTS_KEY
     }
 
+async def make_api_request(endpoint, params=None):
+    global api_request_count
+
+    api_request_count += 1
+    logging.info(f"📡 Запрос #{api_request_count}/{DAILY_LIMIT}")
+
+    url = f"{BASE_URL}{endpoint}"
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(
+                url,
+                headers=get_headers(),
+                params=params,
+                timeout=aiohttp.ClientTimeout(total=10)
+            ) as response:
+
+                if response.status == 200:
+                    return await response.json()
+
+                text = await response.text()
+                logging.error(f"API error {response.status}: {text}")
+                return None
+
+    except Exception as e:
+        logging.error(f"Ошибка запроса: {e}")
+        return None
+
+
+# ======================
+# 📅 ПОЛУЧЕНИЕ МАТЧЕЙ
+# ======================
+
+async def get_today_matches():
     matches = []
+    today = time.strftime("%Y-%m-%d")
 
     for league_id in user_data["selected_football"]:
-        data = await make_api_request(url, headers, {
+        data = await make_api_request("/fixtures", {
             "date": today,
             "league": league_id,
-            "timezone": "Europe/Moscow",
+            "timezone": "Europe/Moscow"
         })
-        if data:
-            for m in data.get("response", []):
+
+        if data and "response" in data:
+            for m in data["response"]:
                 matches.append({
                     "id": m["fixture"]["id"],
                     "league": m["league"]["name"],
@@ -112,147 +106,122 @@ async def get_today_matches():
 
     return matches
 
+
+async def get_live_matches():
+    matches = []
+
+    for league_id in user_data["selected_football"]:
+        data = await make_api_request("/fixtures", {
+            "live": "all",
+            "league": league_id
+        })
+
+        if data and "response" in data:
+            for m in data["response"]:
+                matches.append({
+                    "id": m["fixture"]["id"],
+                    "league": m["league"]["name"],
+                    "home": m["teams"]["home"]["name"],
+                    "away": m["teams"]["away"]["name"],
+                    "home_goals": m["goals"]["home"] or 0,
+                    "away_goals": m["goals"]["away"] or 0,
+                    "elapsed": m["fixture"]["status"]["elapsed"] or "?",
+                })
+
+    return matches
+
+
 async def get_match_details(match_id):
-    url = "https://api-sports-v1.p.rapidapi.com/v3/fixtures"
-    headers = {
-        "X-RapidAPI-Key": RAPID_API_KEY,
-        "X-RapidAPI-Host": "api-sports-v1.p.rapidapi.com",
-    }
+    data = await make_api_request("/fixtures", {"id": match_id})
 
-    data = await make_api_request(url, headers, {"id": match_id})
-    if not data or not data.get("response"):
-        return None
+    if data and data.get("response"):
+        m = data["response"][0]
+        return {
+            "home": m["teams"]["home"]["name"],
+            "away": m["teams"]["away"]["name"],
+            "home_goals": m["goals"]["home"] or 0,
+            "away_goals": m["goals"]["away"] or 0,
+            "status": m["fixture"]["status"]["short"],
+            "league": m["league"]["name"]
+        }
 
-    m = data["response"][0]
-    return {
-        "home": m["teams"]["home"]["name"],
-        "away": m["teams"]["away"]["name"],
-        "home_goals": m["goals"]["home"] or 0,
-        "away_goals": m["goals"]["away"] or 0,
-        "status": m["fixture"]["status"]["short"],
-        "league": m["league"]["name"],
-    }
+    return None
+
 
 # ======================
-# 🤖 BOT
+# 🤖 TELEGRAM
 # ======================
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
-        [InlineKeyboardButton("📅 Матчи сегодня", callback_data="today")],
-        [InlineKeyboardButton("⏹️ Остановить", callback_data="stop")],
+        [InlineKeyboardButton("📅 Матчи на сегодня", callback_data='today_all')],
+        [InlineKeyboardButton("🔴 Live-матчи", callback_data='live')],
     ]
+
     await update.message.reply_text(
-        "🤖 Бот запущен",
-        reply_markup=InlineKeyboardMarkup(keyboard),
+        "Выбери действие:",
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
-async def show_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
 
+async def show_today_matches(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
     matches = await get_today_matches()
+
     if not matches:
-        await query.edit_message_text("Сегодня матчей нет")
+        await query.edit_message_text("Сегодня нет матчей.")
         return
 
-    text = "📅 Матчи сегодня:\n\n"
-    keyboard = []
+    text = "📅 Матчи на сегодня:\n\n"
 
     for i, m in enumerate(matches[:MATCHES_PER_PAGE], 1):
-        text += f"{i}. {m['league']}\n{m['home']} vs {m['away']} ({m['time']})\n\n"
-        keyboard.append([
-            InlineKeyboardButton(
-                f"🎯 Отслеживать {i}",
-                callback_data=f"monitor_{m['id']}",
-            )
-        ])
+        text += f"{i}. {m['league']}\n⏰ {m['time']} {m['home']} – {m['away']}\n\n"
 
-    keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data="back")])
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    await query.edit_message_text(text)
 
-async def start_monitoring(update: Update, context: ContextTypes.DEFAULT_TYPE, match_id):
+
+async def show_live_matches(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    matches = await get_live_matches()
 
-    # ❗ защита от дубликатов
-    for job in context.application.job_queue.get_jobs_by_name("monitor"):
-        job.schedule_removal()
-
-    user_data["monitoring_match_id"] = int(match_id)
-    user_data["last_score"] = {}
-
-    context.application.job_queue.run_repeating(
-        check_goals,
-        interval=LIVE_CHECK_INTERVAL,
-        first=1,
-        name="monitor",
-        chat_id=query.message.chat_id,
-    )
-
-    await query.edit_message_text("✅ Отслеживание начато")
-
-async def stop_monitoring(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    for job in context.application.job_queue.get_jobs_by_name("monitor"):
-        job.schedule_removal()
-
-    user_data["monitoring_match_id"] = None
-    user_data["last_score"] = {}
-
-    if update.callback_query:
-        await update.callback_query.edit_message_text("⏹️ Остановлено")
-    else:
-        await update.message.reply_text("⏹️ Остановлено")
-
-async def check_goals(context: ContextTypes.DEFAULT_TYPE):
-    match_id = user_data["monitoring_match_id"]
-    if not match_id:
+    if not matches:
+        await query.edit_message_text("Нет live матчей.")
         return
 
-    match = await get_match_details(match_id)
-    if not match:
-        return
+    text = "🔴 Live:\n\n"
 
-    score = (match["home_goals"], match["away_goals"])
-    last = user_data["last_score"]
+    for m in matches[:MATCHES_PER_PAGE]:
+        score = f"{m['home_goals']}:{m['away_goals']}"
+        text += f"{m['league']}\n{m['home']} {score} {m['away']}\n\n"
 
-    if last != score:
-        user_data["last_score"] = score
-        await context.bot.send_message(
-            context.job.chat_id,
-            f"🚨 ГОЛ!\n{match['home']} {score[0]}–{score[1]} {match['away']}",
-        )
+    await query.edit_message_text(text)
+
+
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    data = update.callback_query.data
+
+    if data == "today_all":
+        await show_today_matches(update, context)
+
+    elif data == "live":
+        await show_live_matches(update, context)
+
 
 # ======================
 # 🚀 ЗАПУСК
 # ======================
-def main():
-    global aiohttp_session
 
+def main():
     logging.basicConfig(level=logging.INFO)
 
-    application = Application.builder().token(TELEGRAM_TOKEN).build()
+    app = Application.builder().token(TELEGRAM_TOKEN).build()
 
-    aiohttp_session = aiohttp.ClientSession()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(button_handler))
 
-    async def shutdown(app):
-        await aiohttp_session.close()
+    app.run_polling()
 
-    application.post_shutdown.append(shutdown)
-
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(
-        lambda u, c: show_today(u, c) if u.callback_query.data == "today"
-        else stop_monitoring(u, c) if u.callback_query.data == "stop"
-        else start(u, c) if u.callback_query.data == "back"
-        else start_monitoring(u, c, u.callback_query.data.split("_")[1])
-    ))
-
-    print("🚀 Бот запущен")
-    application.run_polling(close_loop=False)
 
 if __name__ == "__main__":
-    if not TELEGRAM_TOKEN or not RAPID_API_KEY:
-        raise RuntimeError("❌ Не заданы переменные окружения")
-
     main()
-    
+        
