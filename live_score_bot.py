@@ -6,28 +6,25 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 
 # ======================
-# 🔑 НАСТРОЙКИ (БЕЗ API-SPORTS!)
+# 🔑 НАСТРОЙКИ
 # ======================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 YOUR_TELEGRAM_ID = int(os.getenv("YOUR_TELEGRAM_ID"))
 
 # 🧠 Данные пользователя
 user_data = {
-    "selected_football": [78],  # Только Бундеслига
+    "selected_football": [78],  # Бундеслига
     "selected_hockey": [105, 106, 107],  # КХЛ, ВХЛ, МХЛ
     "monitoring": {
         "match_id": None,
         "sport": None,
         "last_score": {"home": 0, "away": 0}
     },
-    "check_interval": 30,  # Секунд (по умолчанию)
-    "awaiting_interval_input": False  # Флаг ожидания ввода
+    "check_interval": 30  # Фиксированный интервал (30 сек)
 }
 
 # 🏆 Списки лиг
-ALL_FOOTBALL_LEAGUES = [
-    {"id": 78, "name": "Бундеслига (Германия)"},
-]
+ALL_FOOTBALL_LEAGUES = [{"id": 78, "name": "Бундеслига (Германия)"}]
 ALL_HOCKEY_LEAGUES = [
     {"id": 105, "name": "КХЛ (Россия)"},
     {"id": 106, "name": "ВХЛ (Россия)"},
@@ -35,28 +32,24 @@ ALL_HOCKEY_LEAGUES = [
 ]
 
 MATCHES_PER_PAGE = 5
-INTERVAL_MIN = 5    # Минимальный интервал (сек)
-INTERVAL_MAX = 600  # Максимальный интервал (сек)
 
 # ======================
-# 🌐 АСИНХРОННЫЕ ЗАПРОСЫ К БЕСПЛАТНЫМ ИСТОЧНИКАМ
+# 🌐 БЕСПЛАТНЫЕ ИСТОЧНИКИ
 # ======================
 
 async def fetch_bundesliga_live():
-    """Получает live-матчи Бундеслиги из официального OpenLigaDB"""
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(
-                "https://www.openligadb.de/api/getmatchdata/bl1",                timeout=aiohttp.ClientTimeout(total=5)
+                "https://www.openligadb.de/api/getmatchdata/bl1",
+                timeout=aiohttp.ClientTimeout(total=5)
             ) as resp:
                 if resp.status == 200:
                     return await resp.json()
     except Exception as e:
-        logging.error(f"Ошибка OpenLigaDB: {e}")
-    return []
+        logging.error(f"Ошибка OpenLigaDB: {e}")    return []
 
 async def fetch_khl_live():
-    """Получает live-матчи КХЛ/ВХЛ/МХЛ из официального KHL API"""
     try:
         today = time.strftime("%Y-%m-%d")
         async with aiohttp.ClientSession() as session:
@@ -74,15 +67,10 @@ async def fetch_khl_live():
 # 📅 ПОЛУЧЕНИЕ МАТЧЕЙ
 # ======================
 
-async def get_today_matches():
-    """Для простоты — показываем только live-матчи как 'сегодняшние'"""
-    return await get_live_matches()
-
 async def get_live_matches():
-    """Получает ВСЕ live-матчи: Бундеслига + КХЛ/ВХЛ/МХЛ"""
     matches = []
     
-    # 🇩🇪 Бундеслига (если выбрана)
+    # 🇩🇪 Бундеслига
     if 78 in user_data["selected_football"]:
         data = await fetch_bundesliga_live()
         for match in data:
@@ -96,19 +84,19 @@ async def get_live_matches():
                     "home": home,
                     "away": away,
                     "home_goals": res.get("PointsTeam1", 0),
-                    "away_goals": res.get("PointsTeam2", 0),                    "elapsed": match.get("TimeElapsed", "?"),
+                    "away_goals": res.get("PointsTeam2", 0),
+                    "elapsed": match.get("TimeElapsed", "?"),
                     "sport": "football"
                 })
     
-    # 🇷🇺 КХЛ/ВХЛ/МХЛ (если выбрана хотя бы одна)
+    # 🇷🇺 КХЛ/ВХЛ/МХЛ
     if any(lid in [105, 106, 107] for lid in user_data["selected_hockey"]):
         data = await fetch_khl_live()
         for game in data.get("games", []):
             matches.append({
                 "id": f"khl_{game['id']}",
                 "league": game.get("stage", "Хоккей"),
-                "home": game["homeTeam"]["name"],
-                "away": game["awayTeam"]["name"],
+                "home": game["homeTeam"]["name"],                "away": game["awayTeam"]["name"],
                 "home_goals": game.get("homeScore", 0),
                 "away_goals": game.get("awayScore", 0),
                 "period": game.get("period", "?"),
@@ -118,7 +106,6 @@ async def get_live_matches():
     return matches
 
 async def get_match_details(match_id, sport):
-    """Детали матча для отслеживания (берётся из live-данных)"""
     matches = await get_live_matches()
     for m in matches:
         if m["id"] == match_id and m["sport"] == sport:
@@ -137,15 +124,12 @@ async def get_match_details(match_id, sport):
 # ======================
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_data["awaiting_interval_input"] = False
-    
     selected_football = ", ".join([l["name"] for l in ALL_FOOTBALL_LEAGUES if l["id"] in user_data["selected_football"]]) or "—"
     selected_hockey = ", ".join([l["name"] for l in ALL_HOCKEY_LEAGUES if l["id"] in user_data["selected_hockey"]]) or "—"
-    interval = user_data["check_interval"]
     
     keyboard = [
         [InlineKeyboardButton("⚙️ Настроить лиги", callback_data='configure')],
-        [InlineKeyboardButton("⏱️ Настроить интервал", callback_data='set_interval')],        [InlineKeyboardButton("📅 Матчи на сегодня", callback_data='today')],
+        [InlineKeyboardButton("📅 Матчи на сегодня", callback_data='today')],
         [InlineKeyboardButton("🔴 Live-матчи", callback_data='live')],
         [InlineKeyboardButton("⏹️ Остановить отслеживание", callback_data='stop')],
     ]
@@ -153,24 +137,21 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"✅ <b>Настройки:</b>\n"
         f"⚽ Футбол: {selected_football}\n"
         f"🏒 Хоккей: {selected_hockey}\n"
-        f"⏱️ Интервал проверки: <b>{interval} сек</b>\n\n"
-        f"⚡ <b>Скорость уведомлений:</b> 1–5 сек после гола"
+        f"⏱️ Интервал проверки: <b>30 сек</b>\n\n"
+        f"⚡ Скорость уведомлений: 1–5 сек после гола"
     )
     await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
 async def configure(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_data["awaiting_interval_input"] = False
     query = update.callback_query
     await query.answer()
-    keyboard = [
-        [InlineKeyboardButton("⚽ Футбол (только Бундеслига)", callback_data='conf_football')],
+    keyboard = [        [InlineKeyboardButton("⚽ Футбол (Бундеслига)", callback_data='conf_football')],
         [InlineKeyboardButton("🏒 Хоккей (КХЛ/ВХЛ/МХЛ)", callback_data='conf_hockey')],
         [InlineKeyboardButton("⬅️ Назад", callback_data='back')],
     ]
     await query.edit_message_text("Выберите вид спорта:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def configure_sport(update: Update, context: ContextTypes.DEFAULT_TYPE, sport):
-    user_data["awaiting_interval_input"] = False
     query = update.callback_query
     await query.answer()
     leagues = ALL_FOOTBALL_LEAGUES if sport == "football" else ALL_HOCKEY_LEAGUES
@@ -184,7 +165,6 @@ async def configure_sport(update: Update, context: ContextTypes.DEFAULT_TYPE, sp
     await query.edit_message_text(f"Выберите лиги для {'футбола' if sport == 'football' else 'хоккея'}:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def toggle_league(update: Update, context: ContextTypes.DEFAULT_TYPE, sport, league_id):
-    user_data["awaiting_interval_input"] = False
     query = update.callback_query
     await query.answer()
     target = user_data["selected_football"] if sport == "football" else user_data["selected_hockey"]
@@ -194,64 +174,9 @@ async def toggle_league(update: Update, context: ContextTypes.DEFAULT_TYPE, spor
         target.append(league_id)
     await configure_sport(update, context, sport)
 
-async def request_interval_input(update: Update, context: ContextTypes.DEFAULT_TYPE):    """Запрашивает у пользователя ввод интервала"""
-    user_data["awaiting_interval_input"] = False
-    query = update.callback_query
-    await query.answer()
-    user_data["awaiting_interval_input"] = True
-    await query.edit_message_text(
-        f"⏱️ <b>Введите интервал проверки в секундах:</b>\n\n"
-        f"🔹 Минимум: {INTERVAL_MIN} сек\n"
-        f"🔹 Максимум: {INTERVAL_MAX} сек\n"
-        f"🔹 Рекомендуется: 10–30 сек для максимальной скорости\n\n"
-        f"<i>Пример: 15</i>",
-        parse_mode='HTML'
-    )
-
-async def handle_interval_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Обрабатывает текстовый ввод интервала"""
-    if not user_data.get("awaiting_interval_input", False):
-        return
-    
-    text = update.message.text.strip()
-    
-    try:
-        interval = int(text)
-        
-        if interval < INTERVAL_MIN:
-            await update.message.reply_text(
-                f"❌ Слишком маленький интервал! Минимум: {INTERVAL_MIN} сек.\n"
-                f"Введите новое значение:"
-            )
-            return
-        
-        if interval > INTERVAL_MAX:
-            await update.message.reply_text(
-                f"❌ Слишком большой интервал! Максимум: {INTERVAL_MAX} сек.\n"
-                f"Введите новое значение:"
-            )
-            return
-        
-        user_data["check_interval"] = interval
-        user_data["awaiting_interval_input"] = False
-        
-        await update.message.reply_text(
-            f"✅ Интервал установлен: <b>{interval} сек</b>\n\n"
-            f"Теперь уведомления о голах будут приходить каждые {interval} секунд.\n"
-            f"Напишите /start для возврата в меню.",
-            parse_mode='HTML'
-        )
-        
-    except ValueError:
-        await update.message.reply_text(            "❌ Введите целое число!\n"
-            f"Пример: 15\n"
-            f"Диапазон: {INTERVAL_MIN}–{INTERVAL_MAX} сек"
-        )
-
 async def show_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_data["awaiting_interval_input"] = False
     query = update.callback_query
-    matches = await get_today_matches()
+    matches = await get_live_matches()  # Для простоты — показываем live как "сегодняшние"
     if not matches:
         await query.edit_message_text("Сегодня нет матчей в выбранных лигах.")
         return
@@ -263,15 +188,13 @@ async def show_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
 async def show_live(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_data["awaiting_interval_input"] = False
     query = update.callback_query
     matches = await get_live_matches()
     if not matches:
         await query.edit_message_text("Нет активных матчей в выбранных лигах.")
         return
     text = "🔴 <b>Сейчас идут матчи:</b>\n\n"
-    keyboard = []
-    for i, m in enumerate(matches[:MATCHES_PER_PAGE], 1):
+    keyboard = []    for i, m in enumerate(matches[:MATCHES_PER_PAGE], 1):
         score = f"{m['home_goals']}:{m['away_goals']}"
         time_info = m.get('elapsed', m.get('period', '?'))
         text += f"{i}. {m['league']} • {time_info}'\n{m['home']} {score} {m['away']}\n\n"
@@ -280,7 +203,6 @@ async def show_live(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
 async def start_monitoring(update: Update, context: ContextTypes.DEFAULT_TYPE, sport, match_id):
-    user_data["awaiting_interval_input"] = False
     query = update.callback_query
     user_data["monitoring"] = {
         "match_id": match_id,
@@ -292,7 +214,8 @@ async def start_monitoring(update: Update, context: ContextTypes.DEFAULT_TYPE, s
     context.application.job_queue.run_repeating(
         check_goals,
         interval=interval,
-        first=1,        chat_id=query.message.chat_id,
+        first=1,
+        chat_id=query.message.chat_id,
         name=f"{sport}_{match_id}"
     )
     
@@ -306,7 +229,6 @@ async def start_monitoring(update: Update, context: ContextTypes.DEFAULT_TYPE, s
     )
 
 async def stop_monitoring(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_data["awaiting_interval_input"] = False
     match_id = user_data["monitoring"]["match_id"]
     sport = user_data["monitoring"]["sport"]
     
@@ -321,8 +243,7 @@ async def stop_monitoring(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await (query.edit_message_text(msg) if query else update.message.reply_text(msg))
 
 async def check_goals(context: ContextTypes.DEFAULT_TYPE):
-    chat_id = context.job.chat_id
-    monitoring = user_data["monitoring"]
+    chat_id = context.job.chat_id    monitoring = user_data["monitoring"]
     match_id = monitoring["match_id"]
     sport = monitoring["sport"]
     
@@ -332,16 +253,6 @@ async def check_goals(context: ContextTypes.DEFAULT_TYPE):
     match = await get_match_details(match_id, sport)
     if not match:
         return
-    
-    # Защита от аномальных значений
-    if match["home_goals"] > 20 or match["away_goals"] > 20:
-        for job in context.application.job_queue.get_jobs_by_name(f"{sport}_{match_id}"):
-            job.schedule_removal()
-        user_data["monitoring"] = {"match_id": None, "sport": None, "last_score": {"home": 0, "away": 0}}
-        try:
-            await context.bot.send_message(chat_id, "✅ Матч завершён.")
-        except:
-            pass        return
     
     new_score = {"home": match["home_goals"], "away": match["away_goals"]}
     last_score = monitoring["last_score"]
@@ -355,7 +266,6 @@ async def check_goals(context: ContextTypes.DEFAULT_TYPE):
             logging.error(f"Ошибка уведомления: {e}")
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_data["awaiting_interval_input"] = False
     query = update.callback_query
     data = query.data
     
@@ -368,7 +278,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith('toggle_hockey_'):
         lid = int(data.split('_')[2])
         await toggle_league(update, context, "hockey", lid)
-    elif data == 'set_interval': await request_interval_input(update, context)
     elif data == 'today': await show_today(update, context)
     elif data == 'live': await show_live(update, context)
     elif data.startswith('monitor_'):
@@ -383,23 +292,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     logging.basicConfig(
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        level=logging.INFO
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',        level=logging.INFO
     )
     
     app = Application.builder().token(TELEGRAM_TOKEN).build()
-    
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("stop", stop_monitoring))    app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_interval_input))
-    
+    app.add_handler(CommandHandler("stop", stop_monitoring))
+    app.add_handler(CallbackQueryHandler(button_handler))
     app.run_polling()
 
 if __name__ == "__main__":
     if not TELEGRAM_TOKEN or not YOUR_TELEGRAM_ID:
         print("❌ Ошибка: не заданы TELEGRAM_TOKEN или YOUR_TELEGRAM_ID!")
         exit(1)
-    print("🚀 Бот запускается (БЕЗ API-SPORTS)...")
-    print(f"⚡ Скорость уведомлений: 1–5 сек после гола")
-    print(f"⏱️ Интервал проверки: {user_data['check_interval']} сек (настраивается в боте)")
+    print("🚀 Бот запускается (без API-Sports, без ошибок отступов)")
     main()
