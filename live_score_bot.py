@@ -71,23 +71,23 @@ async def get_live_matches():
     matches = []
     
     # 🇩🇪 Бундеслига
-    if 78 in user_data["selected_football"]:
-        data = await fetch_bundesliga_live()
-        for match in data:
-            if not match.get("MatchIsFinished", True) and match.get("MatchResults"):
-                home = match["Team1"]["TeamName"]
-                away = match["Team2"]["TeamName"]
-                res = match["MatchResults"][0]
-                matches.append({
-                    "id": "bl_%s" % match['MatchID'],
-                    "league": "Бундеслига",
-                    "home": home,
-                    "away": away,
-                    "home_goals": res.get("PointsTeam1", 0),
-                    "away_goals": res.get("PointsTeam2", 0),
-                    "elapsed": match.get("TimeElapsed", "?"),
-                    "sport": "football"
-                })
+if 78 in user_data["selected_football"]:
+    data = await fetch_bundesliga_live()
+    for match in data:  # ← Ключевая строка
+        if not match.get("MatchIsFinished", True) and match.get("MatchResults"):
+            home = match["Team1"]["TeamName"]
+            away = match["Team2"]["TeamName"]
+            res = match["MatchResults"][0]
+            matches.append({
+                "id": "bl_%s" % match['MatchID'],
+                "league": "Бундеслига",
+                "home": home,
+                "away": away,
+                "home_goals": res.get("PointsTeam1", 0),
+                "away_goals": res.get("PointsTeam2", 0),
+                "elapsed": match.get("TimeElapsed", "?"),
+                "sport": "football"
+            })
     
     # 🇷🇺 КХЛ/ВХЛ/МХЛ
     if any(lid in [105, 106, 107] for lid in user_data["selected_hockey"]):
