@@ -9,8 +9,8 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 # 🔑 НАСТРОЙКИ
 # ======================
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-API_SPORTS_KEY = os.getenv("RAPID_API_KEY")   # используем тот же env
-YOUR_TELEGRAM_ID = int(os.getenv("YOUR_TELEGRAM_ID")) if os.getenv("YOUR_TELEGRAM_ID") else 0
+API_SPORTS_KEY = os.getenv("RAPID_API_KEY")  # Используем тот же env
+YOUR_TELEGRAM_ID = int(os.getenv("YOUR_TELEGRAM_ID"))
 
 LIVE_CHECK_INTERVAL = 864
 MATCHES_PER_PAGE = 5
@@ -40,23 +40,26 @@ user_data = {
 }
 
 # ======================
-# 🌐 ПРЯМОЙ API SPORTS IO
+# 🌐 API-СПОРТС (2026)
 # ======================
-
-BASE_URL = "https://v3.football.api-sports.io"
 
 def get_headers():
     return {
         "x-apisports-key": API_SPORTS_KEY
     }
+def get_url(sport):
+    if sport == "football":
+        return "https://v3.football.api-sports.io"
+    elif sport == "hockey":
+        return "https://v3.hockey.api-sports.io"
+    return None
 
-async def make_api_request(endpoint, params=None):
+async def make_api_request(sport, endpoint, params=None):
     global api_request_count
-
     api_request_count += 1
-    logging.info(f"📡 Запрос #{api_request_count}/{DAILY_LIMIT}")
+    logging.info(f"📡 Запрос #{api_request_count}/{DAILY_LIMIT} к {sport}")
 
-    url = f"{BASE_URL}{endpoint}"
+    url = f"{get_url(sport)}{endpoint}"
 
     try:
         async with aiohttp.ClientSession() as session:
@@ -78,7 +81,6 @@ async def make_api_request(endpoint, params=None):
         logging.error(f"Ошибка запроса: {e}")
         return None
 
-
 # ======================
 # 📅 ПОЛУЧЕНИЕ МАТЧЕЙ
 # ======================
@@ -87,14 +89,31 @@ async def get_today_matches():
     matches = []
     today = time.strftime("%Y-%m-%d")
 
+    # Футбол
     for league_id in user_data["selected_football"]:
-        data = await make_api_request("/fixtures", {
+        data = await make_api_request("football", "/fixtures", {
             "date": today,
             "league": league_id,
             "timezone": "Europe/Moscow"
         })
+        if data and "response" in             for m in data["response"]:
+                matches.append({
+                    "id": m["fixture"]["id"],
+                    "league": m["league"]["name"],
+                    "home": m["teams"]["home"]["name"],
+                    "away": m["teams"]["away"]["name"],
+                    "time": m["fixture"]["date"][11:16],
+                    "sport": "football"
+                })
 
-        if data and "response" in data:
+    # Хоккей
+    for league_id in user_data["selected_hockey"]:
+        data = await make_api_request("hockey", "/fixtures", {
+            "date": today,
+            "league": league_id,
+            "timezone": "Europe/Moscow"
+        })
+        if data and "response" in 
             for m in data["response"]:
                 matches.append({
                     "id": m["fixture"]["id"],
@@ -102,21 +121,21 @@ async def get_today_matches():
                     "home": m["teams"]["home"]["name"],
                     "away": m["teams"]["away"]["name"],
                     "time": m["fixture"]["date"][11:16],
+                    "sport": "hockey"
                 })
 
     return matches
 
-
 async def get_live_matches():
     matches = []
 
+    # Футбол
     for league_id in user_data["selected_football"]:
-        data = await make_api_request("/fixtures", {
+        data = await make_api_request("football", "/fixtures", {
             "live": "all",
             "league": league_id
         })
-
-        if data and "response" in data:
+        if data and "response" in 
             for m in data["response"]:
                 matches.append({
                     "id": m["fixture"]["id"],
@@ -126,13 +145,31 @@ async def get_live_matches():
                     "home_goals": m["goals"]["home"] or 0,
                     "away_goals": m["goals"]["away"] or 0,
                     "elapsed": m["fixture"]["status"]["elapsed"] or "?",
+                    "sport": "football"                })
+
+    # Хоккей
+    for league_id in user_data["selected_hockey"]:
+        data = await make_api_request("hockey", "/fixtures", {
+            "live": "all",
+            "league": league_id
+        })
+        if data and "response" in 
+            for m in data["response"]:
+                matches.append({
+                    "id": m["fixture"]["id"],
+                    "league": m["league"]["name"],
+                    "home": m["teams"]["home"]["name"],
+                    "away": m["teams"]["away"]["name"],
+                    "home_goals": m["goals"]["home"] or 0,
+                    "away_goals": m["goals"]["away"] or 0,
+                    "period": m["fixture"]["status"]["short"] or "?",
+                    "sport": "hockey"
                 })
 
     return matches
 
-
-async def get_match_details(match_id):
-    data = await make_api_request("/fixtures", {"id": match_id})
+async def get_match_details(match_id, sport="football"):
+    data = await make_api_request(sport, "/fixtures", {"id": match_id})
 
     if data and data.get("response"):
         m = data["response"][0]
@@ -144,9 +181,7 @@ async def get_match_details(match_id):
             "status": m["fixture"]["status"]["short"],
             "league": m["league"]["name"]
         }
-
     return None
-
 
 # ======================
 # 🤖 TELEGRAM
@@ -159,10 +194,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
 
     await update.message.reply_text(
-        "Выбери действие:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        "Выбери действие:",        reply_markup=InlineKeyboardMarkup(keyboard)
     )
-
 
 async def show_today_matches(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -178,7 +211,6 @@ async def show_today_matches(update: Update, context: ContextTypes.DEFAULT_TYPE)
         text += f"{i}. {m['league']}\n⏰ {m['time']} {m['home']} – {m['away']}\n\n"
 
     await query.edit_message_text(text)
-
 
 async def show_live_matches(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -196,7 +228,6 @@ async def show_live_matches(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await query.edit_message_text(text)
 
-
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = update.callback_query.data
 
@@ -206,14 +237,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == "live":
         await show_live_matches(update, context)
 
-
 # ======================
 # 🚀 ЗАПУСК
 # ======================
 
 def main():
     logging.basicConfig(level=logging.INFO)
-
     app = Application.builder().token(TELEGRAM_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
@@ -221,7 +250,5 @@ def main():
 
     app.run_polling()
 
-
 if __name__ == "__main__":
     main()
-        
