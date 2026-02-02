@@ -3,7 +3,7 @@ import time
 import logging
 import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
 # ======================
 # 🔑 НАСТРОЙКИ
@@ -47,20 +47,20 @@ async def fetch_bundesliga_live():
                 if resp.status == 200:
                     return await resp.json()
     except Exception as e:
-        logging.error(f"Ошибка OpenLigaDB: {e}")    return []
+        logging.error("Ошибка OpenLigaDB: %s", e)    return []
 
 async def fetch_khl_live():
     try:
         today = time.strftime("%Y-%m-%d")
         async with aiohttp.ClientSession() as session:
             async with session.get(
-                f"https://api.khl.ru/v1/schedule/seasons/2025/games?date={today}&status=2",
+                "https://api.khl.ru/v1/schedule/seasons/2025/games?date=%s&status=2" % today,
                 timeout=aiohttp.ClientTimeout(total=5)
             ) as resp:
                 if resp.status == 200:
                     return await resp.json()
     except Exception as e:
-        logging.error(f"Ошибка KHL API: {e}")
+        logging.error("Ошибка KHL API: %s", e)
     return {"games": []}
 
 # ======================
@@ -79,7 +79,7 @@ async def get_live_matches():
                 away = match["Team2"]["TeamName"]
                 res = match["MatchResults"][0]
                 matches.append({
-                    "id": f"bl_{match['MatchID']}",
+                    "id": "bl_%s" % match['MatchID'],
                     "league": "Бундеслига",
                     "home": home,
                     "away": away,
@@ -94,7 +94,7 @@ async def get_live_matches():
         data = await fetch_khl_live()
         for game in data.get("games", []):
             matches.append({
-                "id": f"khl_{game['id']}",
+                "id": "khl_%s" % game['id'],
                 "league": game.get("stage", "Хоккей"),
                 "home": game["homeTeam"]["name"],                "away": game["awayTeam"]["name"],
                 "home_goals": game.get("homeScore", 0),
@@ -134,12 +134,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("⏹️ Остановить отслеживание", callback_data='stop')],
     ]
     text = (
-        f"✅ <b>Настройки:</b>\n"
-        f"⚽ Футбол: {selected_football}\n"
-        f"🏒 Хоккей: {selected_hockey}\n"
-        f"⏱️ Интервал проверки: <b>30 сек</b>\n\n"
-        f"⚡ Скорость уведомлений: 1–5 сек после гола"
-    )
+        "✅ <b>Настройки:</b>\n"
+        "⚽ Футбол: %s\n"
+        "🏒 Хоккей: %s\n"
+        "⏱️ Интервал проверки: <b>30 сек</b>\n\n"
+        "⚡ Скорость уведомлений: 1–5 сек после гола"
+    ) % (selected_football, selected_hockey)
     await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
 async def configure(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -160,9 +160,9 @@ async def configure_sport(update: Update, context: ContextTypes.DEFAULT_TYPE, sp
     keyboard = []
     for league in leagues:
         mark = "✅" if league["id"] in selected else "◻️"
-        keyboard.append([InlineKeyboardButton(f"{mark} {league['name']}", callback_data=f"toggle_{sport}_{league['id']}")])
+        keyboard.append([InlineKeyboardButton("%s %s" % (mark, league['name']), callback_data="toggle_%s_%s" % (sport, league['id']))])
     keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data='configure')])
-    await query.edit_message_text(f"Выберите лиги для {'футбола' if sport == 'football' else 'хоккея'}:", reply_markup=InlineKeyboardMarkup(keyboard))
+    await query.edit_message_text("Выберите лиги для %s:" % ("футбола" if sport == "football" else "хоккея"), reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def toggle_league(update: Update, context: ContextTypes.DEFAULT_TYPE, sport, league_id):
     query = update.callback_query
@@ -176,14 +176,14 @@ async def toggle_league(update: Update, context: ContextTypes.DEFAULT_TYPE, spor
 
 async def show_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    matches = await get_live_matches()  # Для простоты — показываем live как "сегодняшние"
+    matches = await get_live_matches()
     if not matches:
         await query.edit_message_text("Сегодня нет матчей в выбранных лигах.")
         return
     text = "📅 <b>Матчи на сегодня:</b>\n\n"
     for i, m in enumerate(matches[:MATCHES_PER_PAGE], 1):
         time_info = m.get('elapsed', m.get('period', '—'))
-        text += f"{i}. {m['league']} • {time_info}'\n{m['home']} vs {m['away']}\n\n"
+        text += "%s. %s • %s'\n%s vs %s\n\n" % (i, m['league'], time_info, m['home'], m['away'])
     keyboard = [[InlineKeyboardButton("⬅️ Назад", callback_data='back')]]
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
@@ -195,10 +195,10 @@ async def show_live(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     text = "🔴 <b>Сейчас идут матчи:</b>\n\n"
     keyboard = []    for i, m in enumerate(matches[:MATCHES_PER_PAGE], 1):
-        score = f"{m['home_goals']}:{m['away_goals']}"
+        score = "%s:%s" % (m['home_goals'], m['away_goals'])
         time_info = m.get('elapsed', m.get('period', '?'))
-        text += f"{i}. {m['league']} • {time_info}'\n{m['home']} {score} {m['away']}\n\n"
-        keyboard.append([InlineKeyboardButton(f"🎯 Отслеживать матч {i}", callback_data=f"monitor_{m['sport']}_{m['id']}")])
+        text += "%s. %s • %s'\n%s %s %s\n\n" % (i, m['league'], time_info, m['home'], score, m['away'])
+        keyboard.append([InlineKeyboardButton("🎯 Отслеживать матч %s" % i, callback_data="monitor_%s_%s" % (m['sport'], m['id']))])
     keyboard.append([InlineKeyboardButton("⬅️ Назад", callback_data='back')])
     await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
@@ -216,24 +216,24 @@ async def start_monitoring(update: Update, context: ContextTypes.DEFAULT_TYPE, s
         interval=interval,
         first=1,
         chat_id=query.message.chat_id,
-        name=f"{sport}_{match_id}"
+        name="%s_%s" % (sport, match_id)
     )
     
-    await query.edit_message_text(
-        f"✅ <b>Отслеживание запущено!</b>\n"
-        f"🆔 Матч: {match_id}\n"
-        f"⏱️ Интервал: <b>{interval} сек</b>\n"
-        f"🚨 Уведомление придёт через 1–5 сек после гола!\n\n"
-        f"Чтобы остановить: «⏹️ Остановить» или /stop",
-        parse_mode='HTML'
-    )
+    msg = (
+        "✅ <b>Отслеживание запущено!</b>\n"
+        "🆔 Матч: %s\n"
+        "⏱️ Интервал: <b>%s сек</b>\n"
+        "🚨 Уведомление придёт через 1–5 сек после гола!\n\n"
+        "Чтобы остановить: «⏹️ Остановить» или /stop"
+    ) % (match_id, interval)
+    await query.edit_message_text(msg, parse_mode='HTML')
 
 async def stop_monitoring(update: Update, context: ContextTypes.DEFAULT_TYPE):
     match_id = user_data["monitoring"]["match_id"]
     sport = user_data["monitoring"]["sport"]
     
     if match_id:
-        job_name = f"{sport}_{match_id}"
+        job_name = "%s_%s" % (sport, match_id)
         for job in context.application.job_queue.get_jobs_by_name(job_name):
             job.schedule_removal()
     
@@ -258,12 +258,18 @@ async def check_goals(context: ContextTypes.DEFAULT_TYPE):
     last_score = monitoring["last_score"]
     
     if new_score != last_score:
-        msg = f"🚨 <b>ГОЛ!</b> {match['league']}\n{match['home']} {match['home_goals']}–{match['away_goals']} {match['away']}"
+        msg = "🚨 <b>ГОЛ!</b> %s\n%s %s–%s %s" % (
+            match["league"],
+            match["home"],
+            match["home_goals"],
+            match["away_goals"],
+            match["away"]
+        )
         try:
             await context.bot.send_message(chat_id, msg, parse_mode='HTML')
             user_data["monitoring"]["last_score"] = new_score
         except Exception as e:
-            logging.error(f"Ошибка уведомления: {e}")
+            logging.error("Ошибка уведомления: %s", e)
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -286,13 +292,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data == 'stop': await stop_monitoring(update, context)
     elif data == 'back': await start(update, context)
 
-# ======================
-# 🚀 ЗАПУСК
+# ======================# 🚀 ЗАПУСК
 # ======================
 
 def main():
     logging.basicConfig(
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',        level=logging.INFO
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        level=logging.INFO
     )
     
     app = Application.builder().token(TELEGRAM_TOKEN).build()
@@ -305,5 +311,5 @@ if __name__ == "__main__":
     if not TELEGRAM_TOKEN or not YOUR_TELEGRAM_ID:
         print("❌ Ошибка: не заданы TELEGRAM_TOKEN или YOUR_TELEGRAM_ID!")
         exit(1)
-    print("🚀 Бот запускается (без API-Sports, без ошибок отступов)")
+    print("🚀 Бот запускается (без API-Sports, без f-строк)")
     main()
