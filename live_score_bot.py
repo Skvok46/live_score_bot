@@ -246,8 +246,9 @@ async def stop_monitoring(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await (query.edit_message_text(msg) if query else update.message.reply_text(msg))
 
 async def check_goals(context: ContextTypes.DEFAULT_TYPE):
-    chat_id = context.job.chat_id    monitoring = user_data["monitoring"]
-    match_id = monitoring["match_id"]
+    chat_id = context.job.chat_id
+monitoring = user_data["monitoring"]
+match_id = monitoring["match_id"]
     sport = monitoring["sport"]
     
     if not match_id or not sport:
