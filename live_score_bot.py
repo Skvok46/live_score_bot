@@ -196,7 +196,8 @@ async def show_live(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("Нет активных матчей в выбранных лигах.")
         return
     text = "🔴 <b>Сейчас идут матчи:</b>\n\n"
-    keyboard = []    for i, m in enumerate(matches[:MATCHES_PER_PAGE], 1):
+    keyboard = []    
+    for i, m in enumerate(matches[:MATCHES_PER_PAGE], 1):
         score = "%s:%s" % (m['home_goals'], m['away_goals'])
         time_info = m.get('elapsed', m.get('period', '?'))
         text += "%s. %s • %s'\n%s %s %s\n\n" % (i, m['league'], time_info, m['home'], score, m['away'])
