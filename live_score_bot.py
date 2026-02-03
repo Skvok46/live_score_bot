@@ -48,6 +48,7 @@ async def fetch_bundesliga_live():
                     return await resp.json()
     except Exception as e:
         logging.error("Ошибка OpenLigaDB: %s", e)
+    
     return []
 
 async def fetch_khl_live():
