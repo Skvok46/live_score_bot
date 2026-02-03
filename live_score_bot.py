@@ -247,7 +247,8 @@ async def stop_monitoring(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def check_goals(context: ContextTypes.DEFAULT_TYPE):
     chat_id = context.job.chat_id
-    monitoring = user_data["monitoring"]
+monitoring = user_data["monitoring"]
+
     match_id = monitoring["match_id"]
     sport = monitoring["sport"]
     
