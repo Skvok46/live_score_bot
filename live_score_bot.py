@@ -75,7 +75,7 @@ async def get_live_matches():
     # 🇩🇪 Бундеслига
     if 78 in user_data["selected_football"]:
         data = await fetch_bundesliga_live()
-        for match in   # ← ИСПРАВЛЕНО: добавлено "data"
+        for match in data:
             if not match.get("MatchIsFinished", True) and match.get("MatchResults"):
                 home = match["Team1"]["TeamName"]
                 away = match["Team2"]["TeamName"]
