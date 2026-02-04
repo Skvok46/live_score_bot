@@ -1,5 +1,3 @@
-import socket
-print(socket.gethostbyname("api.khl.ru"))
 import aiohttp
 import time
 import logging
