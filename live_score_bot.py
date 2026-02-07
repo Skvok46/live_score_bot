@@ -1,5 +1,4 @@
 import aiohttp
-import time
 import logging
 import os
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -15,27 +14,19 @@ API_SPORTS_KEY = os.getenv("API_SPORTS_KEY")
 
 user_data = {
     "selected_football": [78],
-    "selected_hockey": [57, 105, 106, 107],   # NHL, KHL, VHL, MHL
+
+    # ❗ ПРАВИЛЬНЫЕ ID ЛИГ
+    "selected_hockey": [57, 64, 65, 66],   # NHL, KHL, VHL, MHL
+
     "monitoring": {
         "match_id": None,
         "sport": None,
         "last_score": {"home": 0, "away": 0}
-    },
-    "check_interval": 30
+    }
 }
 
-ALL_FOOTBALL_LEAGUES = [
-    {"id": 78, "name": "Бундеслига (Германия)"}
-]
-
-ALL_HOCKEY_LEAGUES = [
-    {"id": 57, "name": "NHL"},
-    {"id": 105, "name": "KHL"},
-    {"id": 106, "name": "VHL"},
-    {"id": 107, "name": "MHL"}
-]
-
 MATCHES_PER_PAGE = 5
+
 
 # ======================
 # API ЗАПРОСЫ
@@ -69,6 +60,9 @@ async def fetch_hockey_live():
             async with session.get(url, headers=headers) as resp:
 
                 data = await resp.json()
+
+                logging.info("HOCKEY RAW: %s", data)
+
                 return data.get("response", [])
 
     except Exception as e:
@@ -84,7 +78,7 @@ async def fetch_hockey_live():
 async def get_live_matches():
     matches = []
 
-    # Бундеслига
+    # ===== ФУТБОЛ =====
     if 78 in user_data["selected_football"]:
         data = await fetch_bundesliga_live()
 
@@ -97,34 +91,36 @@ async def get_live_matches():
                 res = match.get("MatchResults", [{}])[0]
 
                 matches.append({
-                    "id": "bl_%s" % match["MatchID"],
+                    "id": f"bl_{match['MatchID']}",
                     "league": "Бундеслига",
                     "home": home,
                     "away": away,
                     "home_goals": res.get("PointsTeam1", 0),
                     "away_goals": res.get("PointsTeam2", 0),
-                    "elapsed": match.get("TimeElapsed", "?"),
                     "sport": "football"
                 })
 
-    # Хоккей API-Sports
+    # ===== ХОККЕЙ =====
     hockey = await fetch_hockey_live()
 
     for g in hockey:
 
-        league_id = g["league"]["id"]
+        league = g.get("league", {})
+        league_id = league.get("id")
 
+        # ❗ ФИЛЬТР ПО НАШИМ ЛИГАМ
         if league_id not in user_data["selected_hockey"]:
             continue
 
+        scores = g.get("scores") or {}
+
         matches.append({
-            "id": "hk_%s" % g["id"],
-            "league": g["league"]["name"],
+            "id": f"hk_{g['id']}",
+            "league": league.get("name"),
             "home": g["teams"]["home"]["name"],
             "away": g["teams"]["away"]["name"],
-            "home_goals": g["scores"]["home"],
-            "away_goals": g["scores"]["away"],
-            "period": g["status"]["short"],
+            "home_goals": scores.get("home", 0),
+            "away_goals": scores.get("away", 0),
             "sport": "hockey"
         })
 
@@ -137,13 +133,7 @@ async def get_match_details(match_id, sport):
 
     for m in matches:
         if m["id"] == match_id and m["sport"] == sport:
-            return {
-                "home": m["home"],
-                "away": m["away"],
-                "home_goals": m["home_goals"],
-                "away_goals": m["away_goals"],
-                "league": m["league"]
-            }
+            return m
 
     return None
 
@@ -163,12 +153,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
 
     await update.message.reply_text(
-        "Бот готов.\nВыбран хоккей: NHL/KHL/VHL/MHL\nФутбол: Бундеслига",
+        "Бот готов.\nХоккей: NHL/KHL/VHL/MHL\nФутбол: Бундеслига",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
-async def show_live(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def show_live(update, context):
 
     query = update.callback_query
     await query.answer()
@@ -185,16 +175,14 @@ async def show_live(update: Update, context: ContextTypes.DEFAULT_TYPE):
     i = 1
     for m in matches[:MATCHES_PER_PAGE]:
 
-        score = "%s:%s" % (m["home_goals"], m["away_goals"])
+        score = f"{m['home_goals']}:{m['away_goals']}"
 
-        text += "%s. %s\n%s %s %s\n\n" % (
-            i, m["league"], m["home"], score, m["away"]
-        )
+        text += f"{i}. {m['league']}\n{m['home']} {score} {m['away']}\n\n"
 
         keyboard.append([
             InlineKeyboardButton(
-                "Следить %s" % i,
-                callback_data="monitor_%s_%s" % (m["sport"], m["id"])
+                f"Следить {i}",
+                callback_data=f"monitor_{m['sport']}_{m['id']}"
             )
         ])
 
@@ -221,7 +209,7 @@ async def start_monitoring(update, context, sport, match_id):
         interval=30,
         first=1,
         chat_id=query.message.chat_id,
-        name="%s_%s" % (sport, match_id)
+        name=f"{sport}_{match_id}"
     )
 
     await query.edit_message_text("Отслеживание запущено")
@@ -259,12 +247,7 @@ async def check_goals(context):
 
     if new != mon["last_score"]:
 
-        msg = "ГОЛ!\n%s %s:%s %s" % (
-            match["home"],
-            new["home"],
-            new["away"],
-            match["away"]
-        )
+        msg = f"ГОЛ!\n{match['home']} {new['home']}:{new['away']} {match['away']}"
 
         await context.bot.send_message(
             context.job.chat_id,
