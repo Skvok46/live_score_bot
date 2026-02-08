@@ -15,7 +15,7 @@ API_SPORTS_KEY = os.getenv("API_SPORTS_KEY")
 
 user_data = {
     "selected_football": [78],
-    "selected_hockey": [57, 105, 106, 107],   # NHL, KHL, VHL, MHL
+    "selected_hockey": [57, 35, 36, 37],   # NHL, KHL, VHL, MHL
     "monitoring": {
         "match_id": None,
         "sport": None,
