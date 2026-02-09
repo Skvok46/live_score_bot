@@ -392,7 +392,8 @@ async def check_goals(context: ContextTypes.DEFAULT_TYPE):
     sport = monitoring["sport"]
     if not match_id or not sport:
         return
-    match = await get_match_details(match_id, sport)    if not match:
+    match = await get_match_details(match_id, sport)
+    if not match:
         return
     new_score = {"home": match["home_goals"], "away": match["away_goals"]}
     last_score = monitoring["last_score"]
