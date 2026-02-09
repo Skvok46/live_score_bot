@@ -292,7 +292,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("🔴 Live-матчи", callback_data='live')],
         [InlineKeyboardButton("⏹️ Остановить отслеживание", callback_data='stop')],
     ]
-    text = ("✅ <b>Настройки:</b>\n⚽ Футбол: %s\n🏒 Хоккей: %s\n⏱️ Интервал проверки: <b>30 сек</b>\n\n⚡ Скорость уведомлений: 1–5 сек после гола") % (selected_football, selected_hockey)    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
+    text = ("✅ <b>Настройки:</b>\n⚽ Футбол: %s\n🏒 Хоккей: %s\n⏱️ Интервал проверки: <b>30 сек</b>\n\n⚡ Скорость уведомлений: 1–5 сек после гола") % (selected_football, selected_hockey)
+    await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode='HTML')
 
 async def configure(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
