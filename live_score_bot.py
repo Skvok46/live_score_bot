@@ -342,7 +342,8 @@ async def show_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def show_live(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    matches = await get_live_matches()    if not matches:
+    matches = await get_live_matches()
+    if not matches:
         await query.edit_message_text("Нет активных матчей в выбранных лигах.")
         return
     text = "🔴 <b>Сейчас идут матчи:</b>\n\n"
