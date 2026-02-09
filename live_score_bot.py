@@ -116,7 +116,7 @@ async def fetch_liiga_live():
                 if resp.status == 200:
                     data = await resp.json()
                     games = []
-                    for game in 
+                    for game in data.get("games", []):
                         if game.get("status") == "LIVE":
                             games.append({
                                 "id": str(game["id"]),
@@ -170,7 +170,7 @@ async def get_live_matches():
     # ⚽ Футбол
     if 78 in user_data["selected_football"]:
         data = await fetch_bundesliga_live()
-        for match in 
+        for match in data:
             if not match.get("MatchIsFinished", True) and match.get("MatchResults"):
                 home = match["Team1"]["TeamName"]
                 away = match["Team2"]["TeamName"]
