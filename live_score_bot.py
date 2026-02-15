@@ -1,6 +1,3 @@
-1)
-
-    main()
 import aiohttp
 import logging
 import os
@@ -51,13 +48,17 @@ def is_live_status(status):
 # API ЗАПРОС
 # ======================
 
+from datetime import datetime
+
 async def fetch_hockey_live():
     headers = {
         "x-apisports-key": API_SPORTS_KEY
     }
 
     leagues = [57, 35, 36, 37, 39]
-    season = 2025  # текущий сезон 2025/2026
+    season = 2025
+
+    today = datetime.utcnow().strftime("%Y-%m-%d")
 
     all_games = []
 
@@ -66,11 +67,9 @@ async def fetch_hockey_live():
 
             for league_id in leagues:
 
-                url = f"https://v1.hockey.api-sports.io/games?live=all&league={league_id}&season={season}"
+                url = f"https://v1.hockey.api-sports.io/games?league={league_id}&season={season}&date={today}"
 
                 async with session.get(url, headers=headers) as resp:
-
-                    print(f"LEAGUE {league_id} STATUS:", resp.status)
 
                     if resp.status != 200:
                         continue
@@ -78,9 +77,12 @@ async def fetch_hockey_live():
                     data = await resp.json()
                     games = data.get("response", [])
 
-                    print(f"LEAGUE {league_id} GAMES:", len(games))
+                    for g in games:
+                        status = g["status"]["short"]
 
-                    all_games.extend(games)
+                        # LIVE статусы API-Sports
+                        if status in ["1P", "2P", "3P", "OT", "BT"]:
+                            all_games.append(g)
 
     except Exception as e:
         logging.error("Hockey API error: %s", e)
@@ -292,3 +294,4 @@ if __name__ == "__main__":
         exit(1)
 
     main()
+    
