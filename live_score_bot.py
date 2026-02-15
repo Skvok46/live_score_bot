@@ -47,9 +47,6 @@ def is_live_status(status):
 # ======================
 # API ЗАПРОС
 # ======================
-
-from datetime import datetime
-
 async def fetch_hockey_live():
     headers = {
         "x-apisports-key": API_SPORTS_KEY
@@ -58,7 +55,7 @@ async def fetch_hockey_live():
     leagues = [57, 35, 36, 37, 39]
     season = 2025
 
-    today = datetime.utcnow().strftime("%Y-%m-%d")
+    today = datetime.now().strftime("%Y-%m-%d")
 
     all_games = []
 
@@ -100,7 +97,6 @@ async def get_live_matches():
     hockey = await fetch_hockey_live()
 
     for g in hockey:
-
         league_id = g["league"]["id"]
 
         if league_id not in SELECTED_HOCKEY_LEAGUES:
@@ -149,8 +145,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("⏹ Остановить", callback_data="stop")]
     ]
 
-    await update.message.reply_text(
-        "Бот запущен.\nЛиги: NHL / KHL / VHL / MHL / NMHL",
+    await update.message.reply_text(        "Бот запущен.\nЛиги: NHL / KHL / VHL / MHL / NMHL",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -192,7 +187,7 @@ async def show_live(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
-async def start_monitoring(update, context, match_id):
+async def start_monitoring(update: Update, context: ContextTypes.DEFAULT_TYPE, match_id):
 
     query = update.callback_query
 
@@ -200,10 +195,10 @@ async def start_monitoring(update, context, match_id):
         "match_id": match_id,
         "last_score": {"home": 0, "away": 0}
     }
-
+    # ✅ Исправлено: теперь job_queue точно существует
     context.application.job_queue.run_repeating(
         check_goals,
-        interval=5,
+        interval=10,  # Проверка каждые 30 сек
         first=1,
         chat_id=query.message.chat_id,
         name=f"monitor_{match_id}"
@@ -212,7 +207,7 @@ async def start_monitoring(update, context, match_id):
     await query.edit_message_text("✅ Отслеживание запущено")
 
 
-async def stop_monitoring(update, context):
+async def stop_monitoring(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     query = update.callback_query
 
@@ -248,15 +243,14 @@ async def check_goals(context):
             f"{match['home']} {new_score['home']}:{new_score['away']} {match['away']}"
         )
 
-        await context.bot.send_message(
-            context.job.chat_id,
+        await context.bot.send_message(            context.job.chat_id,
             msg
         )
 
         user_data["monitoring"]["last_score"] = new_score
 
 
-async def button_handler(update, context):
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     data = update.callback_query.data
 
@@ -279,7 +273,8 @@ def main():
 
     logging.basicConfig(level=logging.INFO)
 
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
+    # ✅ Исправлено: добавлен .job_queue(True)
+    app = Application.builder().token(TELEGRAM_TOKEN).job_queue(True).build()
 
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CallbackQueryHandler(button_handler))
@@ -294,4 +289,3 @@ if __name__ == "__main__":
         exit(1)
 
     main()
-    
