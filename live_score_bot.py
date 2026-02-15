@@ -203,7 +203,7 @@ async def start_monitoring(update, context, match_id):
 
     context.application.job_queue.run_repeating(
         check_goals,
-        interval=30,
+        interval=5,
         first=1,
         chat_id=query.message.chat_id,
         name=f"monitor_{match_id}"
