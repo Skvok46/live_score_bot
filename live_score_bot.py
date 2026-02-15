@@ -1,3 +1,6 @@
+1)
+
+    main()
 import aiohttp
 import logging
 import os
@@ -49,23 +52,40 @@ def is_live_status(status):
 # ======================
 
 async def fetch_hockey_live():
-
-    url = f"https://v1.hockey.api-sports.io/games?live=all"
-
     headers = {
         "x-apisports-key": API_SPORTS_KEY
     }
 
+    leagues = [57, 35, 36, 37, 39]
+    season = 2025  # текущий сезон 2025/2026
+
+    all_games = []
+
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as resp:
-                data = await resp.json()
-                return data.get("response", [])
+
+            for league_id in leagues:
+
+                url = f"https://v1.hockey.api-sports.io/games?live=all&league={league_id}&season={season}"
+
+                async with session.get(url, headers=headers) as resp:
+
+                    print(f"LEAGUE {league_id} STATUS:", resp.status)
+
+                    if resp.status != 200:
+                        continue
+
+                    data = await resp.json()
+                    games = data.get("response", [])
+
+                    print(f"LEAGUE {league_id} GAMES:", len(games))
+
+                    all_games.extend(games)
 
     except Exception as e:
         logging.error("Hockey API error: %s", e)
 
-    return []
+    return all_games
 
 
 # ======================
