@@ -81,7 +81,7 @@ async def fetch_hockey_live():
                         status = g["status"]["short"]
 
                         # LIVE статусы API-Sports
-                        if status in ["1P", "2P", "3P", "OT", "BT"]:
+                        if status in ["P1", "P2", "P3", "OT", "BT"]:
                             all_games.append(g)
 
     except Exception as e:
@@ -294,4 +294,4 @@ if __name__ == "__main__":
         exit(1)
 
     main()
-        
+    
