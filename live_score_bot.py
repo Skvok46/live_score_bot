@@ -58,7 +58,7 @@ async def fetch_hockey_live():
         "x-apisports-key": API_SPORTS_KEY
     }
 
-    leagues = SELECTED_HOCKEY_LEAGUES
+    leagues = [57, 35, 36, 37, 39, 38, 40]
     season = 2025
 
     today = datetime.utcnow().strftime("%Y-%m-%d")
@@ -71,6 +71,7 @@ async def fetch_hockey_live():
             for league_id in leagues:
 
                 url = f"https://v1.hockey.api-sports.io/games?league={league_id}&season={season}&date={today}"
+
                 global API_REQUEST_COUNT, API_REQUEST_DATE
 
 # Сброс счётчика если новый день
@@ -90,12 +91,12 @@ async def fetch_hockey_live():
                     data = await resp.json()
                     games = data.get("response", [])
 
-            for g in games:
-                                status = g["status"]["short"]
+                    for g in games:
+                        status = g["status"]["short"]
 
                         # LIVE статусы API-Sports
-            if status in ["P1", "P2", "P3", "OT", "BT"]:
-                                all_games.append(g)
+                        if status in ["P1", "P2", "P3", "OT", "BT"]:
+                            all_games.append(g)
 
     except Exception as e:
         logging.error("Hockey API error: %s", e)
@@ -198,6 +199,7 @@ async def show_live(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 callback_data=f"monitor_{m['id']}"
             )
         ])
+
     keyboard.append([
         InlineKeyboardButton(
             "❌ Остановить всё отслеживание",
@@ -336,4 +338,4 @@ if __name__ == "__main__":
         exit(1)
 
     main()
-    
+        
