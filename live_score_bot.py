@@ -228,7 +228,7 @@ async def start_monitoring(update, context, match_id):
         job.schedule_removal()
     context.application.job_queue.run_repeating(
         check_goals,
-        interval=0.5,
+        interval=1,
         first=1,
         chat_id=query.message.chat_id,
         name=job_name
