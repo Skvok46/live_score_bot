@@ -2,6 +2,9 @@ import aiohttp
 import logging
 import os
 from datetime import datetime
+
+API_REQUEST_COUNT = 0
+API_REQUEST_DATE = datetime.utcnow().date()
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
@@ -20,7 +23,7 @@ API_SPORTS_KEY = os.getenv("API_SPORTS_KEY")
 # MHL → 37
 # NMHL → 39
 
-SELECTED_HOCKEY_LEAGUES = [57, 35, 36, 37, 39]
+SELECTED_HOCKEY_LEAGUES = [57, 35, 36, 37, 39, 38, 40]
 
 user_data = {
     "monitoring": {
@@ -55,7 +58,7 @@ async def fetch_hockey_live():
         "x-apisports-key": API_SPORTS_KEY
     }
 
-    leagues = [57, 35, 36, 37, 39]
+    leagues = SELECTED_HOCKEY_LEAGUES
     season = 2025
 
     today = datetime.utcnow().strftime("%Y-%m-%d")
@@ -68,6 +71,16 @@ async def fetch_hockey_live():
             for league_id in leagues:
 
                 url = f"https://v1.hockey.api-sports.io/games?league={league_id}&season={season}&date={today}"
+                global API_REQUEST_COUNT, API_REQUEST_DATE
+
+# Сброс счётчика если новый день
+                today = datetime.utcnow().date()
+                if today != API_REQUEST_DATE:
+                    API_REQUEST_DATE = today
+                    API_REQUEST_COUNT = 0
+
+                API_REQUEST_COUNT += 1
+                print(f"API requests today: {API_REQUEST_COUNT}/7500")
 
                 async with session.get(url, headers=headers) as resp:
 
@@ -77,12 +90,12 @@ async def fetch_hockey_live():
                     data = await resp.json()
                     games = data.get("response", [])
 
-                    for g in games:
-                        status = g["status"]["short"]
+            for g in games:
+                                status = g["status"]["short"]
 
                         # LIVE статусы API-Sports
-                        if status in ["P1", "P2", "P3", "OT", "BT"]:
-                            all_games.append(g)
+            if status in ["P1", "P2", "P3", "OT", "BT"]:
+                                all_games.append(g)
 
     except Exception as e:
         logging.error("Hockey API error: %s", e)
@@ -185,7 +198,12 @@ async def show_live(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 callback_data=f"monitor_{m['id']}"
             )
         ])
-
+    keyboard.append([
+        InlineKeyboardButton(
+            "❌ Остановить всё отслеживание",
+            callback_data="stop_all"
+        )
+    ])
     await query.edit_message_text(
         text,
         reply_markup=InlineKeyboardMarkup(keyboard)
@@ -200,13 +218,18 @@ async def start_monitoring(update, context, match_id):
         "match_id": match_id,
         "last_score": {"home": 0, "away": 0}
     }
+    # Удаляем старые job с таким же именем
+    job_name = f"monitor_{match_id}"
+    old_jobs = context.application.job_queue.get_jobs_by_name(job_name)
 
+    for job in old_jobs:
+        job.schedule_removal()
     context.application.job_queue.run_repeating(
         check_goals,
-        interval=10,
+        interval=0.5,
         first=1,
         chat_id=query.message.chat_id,
-        name=f"monitor_{match_id}"
+        name=job_name
     )
 
     await query.edit_message_text("✅ Отслеживание запущено")
@@ -216,12 +239,17 @@ async def stop_monitoring(update, context):
 
     query = update.callback_query
 
+    jobs = context.application.job_queue.jobs()
+
+    for job in jobs:
+        job.schedule_removal()
+
     user_data["monitoring"] = {
         "match_id": None,
         "last_score": {"home": 0, "away": 0}
     }
 
-    await query.edit_message_text("⏹ Остановлено")
+    await query.edit_message_text("⛔ Все отслеживания остановлены")
 
 
 async def check_goals(context):
@@ -232,6 +260,20 @@ async def check_goals(context):
         return
 
     match = await get_match_details(mon["match_id"])
+    # 🔥 Если матч завершён — остановить мониторинг
+    if match and match["period"] not in ["P1", "P2", "P3", "OT", "BT"]:
+        jobs = context.application.job_queue.jobs()
+        for job in jobs:
+            if job.name == f"monitor_{mon['match_id']}":
+                job.schedule_removal()
+
+        await context.bot.send_message(
+            context.job.chat_id,
+            "🏁 Матч завершён. Отслеживание остановлено."
+    )
+
+        user_data["monitoring"]["match_id"] = None
+        return
 
     if not match:
         return
@@ -267,7 +309,7 @@ async def button_handler(update, context):
         match_id = data.split("_")[1]
         await start_monitoring(update, context, match_id)
 
-    elif data == "stop":
+    elif data in ["stop", "stop_all"]:
         await stop_monitoring(update, context)
 
 
